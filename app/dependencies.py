@@ -1,3 +1,4 @@
+import logging
 from functools import lru_cache
 from typing import Annotated, Any
 
@@ -6,6 +7,8 @@ from jose import JWTError, jwt
 from supabase import Client, create_client
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache
@@ -31,7 +34,8 @@ async def get_current_user(authorization: Annotated[str, Header()]) -> dict[str,
             algorithms=["HS256"],
             options={"verify_aud": False},
         )
-    except JWTError:
+    except JWTError as exc:
+        logger.warning("JWT decode failed: %s (secret_len=%d, token_len=%d)", exc, len(settings.supabase_jwt_secret), len(token))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
