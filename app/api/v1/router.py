@@ -1,12 +1,14 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import analytics, auth, floor_plans, jobs, videos
+from app.api.v1.endpoints import analytics, auth, dashboard, floor_plans, jobs, onboarding, videos
 from app.api.v1.endpoints.admin import jobs as admin_jobs
 from app.api.v1.endpoints.admin import system as admin_system
 from app.api.v1.endpoints.admin import users as admin_users
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(onboarding.router, prefix="/onboarding", tags=["onboarding"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(floor_plans.router, prefix="/floor-plans", tags=["floor-plans"])
 api_router.include_router(videos.router, prefix="/videos", tags=["videos"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])

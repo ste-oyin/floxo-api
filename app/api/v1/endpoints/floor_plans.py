@@ -1,12 +1,14 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from supabase import Client
 
+from app.config import settings
 from app.db.session import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_supabase_client
 from app.models.floor_plan import FloorPlan
 from app.models.location import Location
 from app.schemas.requests import CreateFloorPlan
@@ -111,3 +113,47 @@ async def delete_floor_plan(
     await db.delete(row)
     await db.commit()
     return None
+
+
+@router.post("/upload-image", status_code=status.HTTP_200_OK)
+async def upload_floor_plan_image(
+    file: Annotated[UploadFile, File()],
+    _: Annotated[dict, Depends(get_current_user)],
+    supabase: Annotated[Client, Depends(get_supabase_client)],
+):
+    """Upload a floor plan image to Supabase Storage and return its public URL."""
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    data = await file.read()
+    ext = (file.filename or "image.png").rsplit(".", 1)[-1]
+    storage_path = f"floor-plans/{uuid.uuid4()}.{ext}"
+    supabase.storage.from_("floor-plans").upload(
+        storage_path,
+        data,
+        file_options={"content-type": file.content_type, "upsert": "true"},
+    )
+    public_url = supabase.storage.from_("floor-plans").get_public_url(storage_path)
+    return {"image_path": storage_path, "image_url": public_url}
+
+
+from app.models.analytics_result import AnalyticsResult
+from app.schemas.responses import AnalyticsResultResponse
+
+
+@router.get("/{floor_plan_id}/analytics", response_model=list[AnalyticsResultResponse])
+async def get_floor_plan_analytics(
+    floor_plan_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[dict, Depends(get_current_user)],
+):
+    fp = await db.get(FloorPlan, floor_plan_id)
+    if not fp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Floor plan not found")
+    stmt = (
+        select(AnalyticsResult)
+        .where(AnalyticsResult.floor_plan_id == floor_plan_id)
+        .order_by(AnalyticsResult.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    return [AnalyticsResultResponse.model_validate(r) for r in rows]
