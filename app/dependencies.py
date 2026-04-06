@@ -2,13 +2,20 @@ import logging
 from functools import lru_cache
 from typing import Annotated, Any
 
+import jwt
 from fastapi import Depends, Header, HTTPException, status
-from jose import JWTError, jwt
+from jwt import PyJWKClient
 from supabase import Client, create_client
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+_jwks_client = PyJWKClient(
+    f"{settings.supabase_url}/auth/v1/.well-known/jwks.json",
+    cache_jwk_set=True,
+    lifespan=300,
+)
 
 
 @lru_cache
@@ -28,14 +35,15 @@ async def get_current_user(authorization: Annotated[str, Header()]) -> dict[str,
         )
     token = authorization.split(" ", 1)[1].strip()
     try:
+        signing_key = _jwks_client.get_signing_key_from_jwt(token)
         payload = jwt.decode(
             token,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
+            signing_key.key,
+            algorithms=["ES256"],
             options={"verify_aud": False},
         )
-    except JWTError as exc:
-        logger.warning("JWT decode failed: %s (secret_len=%d, token_len=%d)", exc, len(settings.supabase_jwt_secret), len(token))
+    except jwt.PyJWTError as exc:
+        logger.warning("JWT decode failed: %s (token_len=%d)", exc, len(token))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
