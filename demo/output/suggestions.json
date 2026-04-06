@@ -1,0 +1,25 @@
+{
+  "suggestions": [
+    {
+      "title": "Ease pinch points and widen primary paths",
+      "description": "Traffic is highly concentrated in a few areas, increasing wait risk. Widen aisles, stagger fixtures, or add secondary routes.",
+      "priority": "high",
+      "metric_source": "congestion_score",
+      "expected_impact": "Reduced crowding and smoother flow"
+    },
+    {
+      "title": "Rebalance layout for underused areas",
+      "description": "A large share of the floor shows very low traffic relative to peak zones. Consider repositioning fixtures or signage to draw visitors into dead zones.",
+      "priority": "high",
+      "metric_source": "dead_zone_ratio",
+      "expected_impact": "Higher utilization of low-traffic regions"
+    },
+    {
+      "title": "Schedule a follow-up capture",
+      "description": "Re-run analysis after layout changes to validate impact on traffic and dwell time.",
+      "priority": "low",
+      "metric_source": "pipeline",
+      "expected_impact": "Measurable before/after comparison"
+    }
+  ]
+}
