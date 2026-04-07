@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Annotated
 
@@ -13,7 +14,22 @@ from app.models.video import Video
 from app.schemas.requests import VideoRegisterRequest, VideoUploadUrlRequest
 from app.schemas.responses import UploadUrlResponse, VideoResponse
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+def _extract_signed_upload(signed: object, fallback_path: str) -> tuple[str | None, str | None, str]:
+    """Extract signed_url, token, path from a supabase-py storage response (dict or object)."""
+    if isinstance(signed, dict):
+        url = signed.get("signedUrl") or signed.get("signed_url") or signed.get("signedURL")
+        token = signed.get("token")
+        path = signed.get("path") or fallback_path
+    else:
+        url = getattr(signed, "signed_url", None) or getattr(signed, "signedUrl", None)
+        token = getattr(signed, "token", None)
+        path = getattr(signed, "path", None) or fallback_path
+    return url, token, str(path)
 
 
 @router.post("/upload-url", response_model=UploadUrlResponse, status_code=status.HTTP_200_OK)
@@ -28,15 +44,14 @@ async def create_upload_url(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Floor plan not found")
     storage_path = f"{body.floor_plan_id}/{uuid.uuid4()}_{body.filename}"
     signed = supabase.storage.from_(settings.supabase_video_bucket).create_signed_upload_url(storage_path)
-    signed_url = getattr(signed, "signed_url", None) or getattr(signed, "signedUrl", None)
+    logger.info("Signed upload response type=%s value=%s", type(signed).__name__, signed)
+    signed_url, token, path = _extract_signed_upload(signed, storage_path)
     if not signed_url:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Could not create signed upload URL",
         )
-    token = getattr(signed, "token", None)
-    path = getattr(signed, "path", None) or storage_path
-    return UploadUrlResponse(signed_url=signed_url, path=str(path), token=token)
+    return UploadUrlResponse(signed_url=signed_url, path=path, token=token)
 
 
 @router.post("", response_model=VideoResponse, status_code=status.HTTP_201_CREATED)
