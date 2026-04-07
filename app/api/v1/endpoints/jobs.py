@@ -31,8 +31,9 @@ async def create_job(
     if not floor_plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Floor plan not found")
     meta = floor_plan.metadata_json or {}
-    width = int(meta.get("width", 1920))
-    height = int(meta.get("height", 1080))
+    canvas = meta.get("canvas") or {}
+    width = int(meta.get("width") or canvas.get("width") or 1920)
+    height = int(meta.get("height") or canvas.get("height") or 1080)
     row = Job(
         video_id=body.video_id,
         calibration_json=body.calibration_json,

@@ -10,6 +10,47 @@ from app.models.analytics_result import AnalyticsResult
 from app.services.suggestion_service import generate_suggestions
 
 
+def _enrich_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    """Flatten nested pipeline output into top-level keys for suggestion_service."""
+    enriched = dict(metrics)
+    dz = metrics.get("dead_zones")
+    if isinstance(dz, dict):
+        dead_list = dz.get("dead_zones", [])
+        total_cells = dz.get("total_cells", 1)
+        if isinstance(dead_list, list) and total_cells:
+            enriched.setdefault("dead_zone_ratio", len(dead_list) / max(total_cells, 1))
+
+    cg = metrics.get("congestion")
+    if isinstance(cg, dict):
+        cells = cg.get("cells", [])
+        if isinstance(cells, list) and cells:
+            scores = [float(c.get("congestion_score", 0)) for c in cells if isinstance(c, dict)]
+            if scores:
+                enriched.setdefault("congestion_score", max(scores) / 100.0)
+
+    dw = metrics.get("dwell_zones")
+    if isinstance(dw, dict):
+        zones = dw.get("zones", [])
+        if isinstance(zones, list) and zones:
+            dwell_vals = [
+                float(z.get("mean_dwell_seconds", z.get("avg_dwell", 0)))
+                for z in zones if isinstance(z, dict)
+            ]
+            if dwell_vals:
+                enriched.setdefault("mean_dwell_seconds", sum(dwell_vals) / len(dwell_vals))
+                sorted_d = sorted(dwell_vals)
+                mid = len(sorted_d) // 2
+                enriched.setdefault("median_dwell_seconds", sorted_d[mid])
+
+    pp = metrics.get("paths")
+    if isinstance(pp, dict):
+        enriched.setdefault("total_tracks", len(pp.get("tracks", pp.get("paths", []))))
+    elif isinstance(pp, list):
+        enriched.setdefault("total_tracks", len(pp))
+
+    return enriched
+
+
 async def save_results(
     db: AsyncSession,
     job_id: uuid.UUID,
@@ -18,7 +59,8 @@ async def save_results(
     heatmap_path: str | None,
     paths: list[dict[str, Any]] | dict[str, Any],
 ) -> AnalyticsResult:
-    suggestions = generate_suggestions(metrics)
+    enriched = _enrich_metrics(metrics)
+    suggestions = generate_suggestions(enriched)
     paths_payload: dict[str, Any]
     if isinstance(paths, list):
         paths_payload = {"paths": paths}
