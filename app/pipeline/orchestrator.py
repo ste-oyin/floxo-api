@@ -53,9 +53,31 @@ def _default_zones(floor_w: int, floor_h: int, cols: int = 2, rows: int = 2) -> 
     return zones
 
 
+def _scale_to_floor(
+    trajectories_cam: dict[int, list[tuple[int, float, float]]],
+    video_path: Path,
+    floor_size: tuple[int, int],
+) -> dict[int, list[tuple[int, float, float]]]:
+    """Linearly scale camera pixel coords to floor plan dimensions."""
+    cap = cv2.VideoCapture(str(video_path))
+    vw = float(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1920)
+    vh = float(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 1080)
+    cap.release()
+
+    fw, fh = float(floor_size[0]), float(floor_size[1])
+    sx, sy = fw / max(vw, 1.0), fh / max(vh, 1.0)
+
+    out: dict[int, list[tuple[int, float, float]]] = {}
+    for tid, pts in trajectories_cam.items():
+        out[tid] = [
+            (fr, min(x * sx, fw - 1), min(y * sy, fh - 1)) for fr, x, y in pts
+        ]
+    return out
+
+
 def run_pipeline(
     video_path: str | Path,
-    calibration_points: list[dict],
+    calibration_points: list[dict] | dict | None,
     floor_plan_width: int,
     floor_plan_height: int,
     frame_skip: int = 5,
@@ -75,9 +97,14 @@ def run_pipeline(
     logger.info("Stage: multi-object tracking (%d frames)", len(frame_detections))
     trajectories_cam = track_persons(frame_detections, fps)
 
-    logger.info("Stage: homography (%d tracks)", len(trajectories_cam))
     floor_size = (floor_plan_width, floor_plan_height)
-    trajectories = apply_homography(trajectories_cam, calibration_points, floor_size)
+    cal_list = calibration_points if isinstance(calibration_points, list) else []
+    if len(cal_list) >= 4:
+        logger.info("Stage: homography (%d tracks, %d cal points)", len(trajectories_cam), len(cal_list))
+        trajectories = apply_homography(trajectories_cam, cal_list, floor_size)
+    else:
+        logger.info("Stage: scale-to-floor (%d tracks, no calibration)", len(trajectories_cam))
+        trajectories = _scale_to_floor(trajectories_cam, path, floor_size)
 
     zones = _default_zones(floor_plan_width, floor_plan_height)
 
