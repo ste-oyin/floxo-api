@@ -24,6 +24,7 @@ engine = create_async_engine(
     _resolved_database_url(),
     echo=settings.debug,
     future=True,
+    connect_args={"statement_cache_size": 0},
 )
 
 AsyncSessionLocal = async_sessionmaker(
